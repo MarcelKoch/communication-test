@@ -43,6 +43,29 @@ BENCHMARK_DEFINE_F(Fixture, None)(benchmark::State &state) {
     }
 }
 
+BENCHMARK_DEFINE_F(Fixture, ExtraSync)(benchmark::State &state) {
+    const auto num_kernels = state.range(1);
+
+    for (auto _: state) {
+        auto start = std::chrono::steady_clock::now();
+        for (int i = 0; i < num_kernels; ++i) {
+            send_buf.fill(mpi_comm.rank());
+        }
+        exec->synchronize();
+        for (int i = 0; i < num_kernels; ++i) {
+            recv_buf.fill(mpi_comm.rank());
+        }
+        exec->synchronize();
+        mpi_comm.synchronize();
+        auto end = std::chrono::steady_clock::now();
+
+        auto elapsed_seconds = std::chrono::duration_cast<
+                std::chrono::duration<double>>(end - start).count();
+        mpi_comm.all_reduce(exec->get_master(), &elapsed_seconds, 1, MPI_MAX);
+        state.SetIterationTime(elapsed_seconds);
+    }
+}
+
 BENCHMARK_DEFINE_F(Fixture, MPI)(benchmark::State &state) {
     const auto num_kernels = state.range(1);
 
@@ -133,6 +156,16 @@ int main(int argc, char **argv) {
 
     benchmark::RegisterBenchmark("none", [&](benchmark::State &st) {
         Fixture_None_Benchmark b;
+        b.exec = exec;
+        b.mpi_comm = mpi_comm;
+        b.nccl_comm = nccl_comm;
+        b.Run(st);
+    })->ArgsProduct({
+                            {100, 1000, 10000},
+                            {5,   10,    20}
+                    })->UseManualTime();
+    benchmark::RegisterBenchmark("extra-synch", [&](benchmark::State &st) {
+        Fixture_ExtraSync_Benchmark b;
         b.exec = exec;
         b.mpi_comm = mpi_comm;
         b.nccl_comm = nccl_comm;

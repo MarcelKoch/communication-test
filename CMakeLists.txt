@@ -9,7 +9,7 @@ find_package(benchmark REQUIRED)
 find_package(MPI REQUIRED)
 
 add_executable(main main.cpp)
-target_link_libraries(main Ginkgo::ginkgo rccl hip::host)
+target_link_libraries(main Ginkgo::ginkgo roc::rccl hip::host)
 
 add_executable(benchmarks benchmarks.cpp)
-target_link_libraries(benchmarks Ginkgo::ginkgo rccl hip::host benchmark::benchmark)
+target_link_libraries(benchmarks Ginkgo::ginkgo roc::rccl hip::host benchmark::benchmark)
