@@ -361,7 +361,7 @@ benchmark::RegisterBenchmark(#op "/" #variant, [&](benchmark::State &st) { \
     else {
         // reporting from other processes is disabled by passing a custom reporter
         NullReporter null;
-        ::benchmark::RunSpecifiedBenchmarks(&null);
+        ::benchmark::RunSpecifiedBenchmarks(&null, &null);
     }
     benchmark::Shutdown();
     ncclCommDestroy(nccl_comm);
