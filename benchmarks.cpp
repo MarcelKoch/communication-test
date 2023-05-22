@@ -302,7 +302,7 @@ int main(int argc, char **argv) {
     ncclComm_t nccl_comm;
 
     auto exec = gko::__EXEC::create(
-            gko::experimental::mpi::map_rank_to_device_id(mpi_comm.get(), 8),
+            gko::experimental::mpi::map_rank_to_device_id(mpi_comm.get(), gko::__EXEC::get_num_devices()),
             gko::ReferenceExecutor::create());
     auto g = exec->get_scoped_device_id_guard(); // seems to be required for any nccl calls
 
