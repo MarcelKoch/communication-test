@@ -2,7 +2,19 @@
 #include __NCCL_INC
 #include <benchmark/benchmark.h>
 
-class Fixture : public benchmark::Fixture {
+
+template<typename F>
+double timed(F &&fn) {
+    auto start = std::chrono::steady_clock::now();
+
+    fn();
+
+    auto end = std::chrono::steady_clock::now();
+    return std::chrono::duration_cast<
+            std::chrono::duration<double>>(end - start).count();
+}
+
+class AllGather : public benchmark::Fixture {
 public:
     void SetUp(benchmark::State &state) override {
         const auto size = static_cast<gko::size_type >(state.range(0));
@@ -21,106 +33,73 @@ public:
 };
 
 
-BENCHMARK_DEFINE_F(Fixture, None)(benchmark::State &state) {
+BENCHMARK_DEFINE_F(AllGather, None)(benchmark::State &state) {
     const auto num_kernels = state.range(1);
 
     for (auto _: state) {
         auto start = std::chrono::steady_clock::now();
-        for (int i = 0; i < num_kernels; ++i) {
-            send_buf.fill(mpi_comm.rank());
-        }
-        for (int i = 0; i < num_kernels; ++i) {
-            recv_buf.fill(mpi_comm.rank());
-        }
-        exec->synchronize();
-        mpi_comm.synchronize();
-        auto end = std::chrono::steady_clock::now();
+        auto elapsed_seconds = timed(
+                [&] {
+                    for (int i = 0; i < num_kernels; ++i) {
+                        send_buf.fill(mpi_comm.rank());
+                        benchmark::DoNotOptimize(send_buf.get_data());
+                    }
 
-        auto elapsed_seconds = std::chrono::duration_cast<
-                std::chrono::duration<double>>(end - start).count();
+                    exec->synchronize();
+                }
+        );
         mpi_comm.all_reduce(exec->get_master(), &elapsed_seconds, 1, MPI_MAX);
         state.SetIterationTime(elapsed_seconds);
     }
 }
 
-BENCHMARK_DEFINE_F(Fixture, ExtraSync)(benchmark::State &state) {
+BENCHMARK_DEFINE_F(AllGather, MPI)(benchmark::State &state) {
     const auto num_kernels = state.range(1);
 
     for (auto _: state) {
-        auto start = std::chrono::steady_clock::now();
-        for (int i = 0; i < num_kernels; ++i) {
-            send_buf.fill(mpi_comm.rank());
-        }
-        exec->synchronize();
-        for (int i = 0; i < num_kernels; ++i) {
-            recv_buf.fill(mpi_comm.rank());
-        }
-        exec->synchronize();
-        mpi_comm.synchronize();
-        auto end = std::chrono::steady_clock::now();
+        auto elapsed_seconds = timed(
+                [&] {
+                    for (int i = 0; i < num_kernels; ++i) {
+                        send_buf.fill(mpi_comm.rank());
+                        benchmark::DoNotOptimize(send_buf.get_data());
+                    }
 
-        auto elapsed_seconds = std::chrono::duration_cast<
-                std::chrono::duration<double>>(end - start).count();
+                    exec->synchronize();
+                    mpi_comm.all_gather(exec, send_buf.get_data(), send_buf.get_num_elems(), recv_buf.get_data(),
+                                        send_buf.get_num_elems());
+                    exec->synchronize();
+                }
+        );
         mpi_comm.all_reduce(exec->get_master(), &elapsed_seconds, 1, MPI_MAX);
         state.SetIterationTime(elapsed_seconds);
     }
 }
 
-BENCHMARK_DEFINE_F(Fixture, MPI)(benchmark::State &state) {
+BENCHMARK_DEFINE_F(AllGather, NCCL)(benchmark::State &state) {
     const auto num_kernels = state.range(1);
 
     for (auto _: state) {
-        auto start = std::chrono::steady_clock::now();
-        for (int i = 0; i < num_kernels; ++i) {
-            send_buf.fill(mpi_comm.rank());
-        }
+        auto elapsed_seconds = timed(
+                [&] {
+                    for (int i = 0; i < num_kernels; ++i) {
+                        send_buf.fill(mpi_comm.rank());
+                        benchmark::DoNotOptimize(send_buf.get_data());
+                    }
 
-        exec->synchronize();
-        mpi_comm.all_gather(exec, send_buf.get_data(), send_buf.get_num_elems(), recv_buf.get_data(),
-                            send_buf.get_num_elems());
+                    {
+                        auto g = exec->get_scoped_device_id_guard();
+                        ncclAllGather(send_buf.get_data(), recv_buf.get_data(), send_buf.get_num_elems(), ncclDouble,
+                                      nccl_comm, exec->get_stream());
+                    }
 
-        for (int i = 0; i < num_kernels; ++i) {
-            recv_buf.fill(mpi_comm.rank());
-        }
-
-        exec->synchronize();
-        mpi_comm.synchronize();
-        auto end = std::chrono::steady_clock::now();
-
-        auto elapsed_seconds = std::chrono::duration_cast<
-                std::chrono::duration<double>>(end - start).count();
+                    exec->synchronize();
+                }
+        );
         mpi_comm.all_reduce(exec->get_master(), &elapsed_seconds, 1, MPI_MAX);
         state.SetIterationTime(elapsed_seconds);
     }
 }
 
-BENCHMARK_DEFINE_F(Fixture, NCCL)(benchmark::State &state) {
-    const auto num_kernels = state.range(1);
-
-    for (auto _: state) {
-        auto start = std::chrono::steady_clock::now();
-        for (int i = 0; i < num_kernels; ++i) {
-            send_buf.fill(mpi_comm.rank());
-        }
-
-        auto g = exec->get_scoped_device_id_guard();
-        ncclAllGather(send_buf.get_data(), recv_buf.get_data(), send_buf.get_num_elems(), ncclDouble, nccl_comm,
-                      exec->get_stream());
-
-        for (int i = 0; i < num_kernels; ++i) {
-            recv_buf.fill(mpi_comm.rank());
-        }
-
-        exec->synchronize();
-        mpi_comm.synchronize();
-        auto end = std::chrono::steady_clock::now();
-
-        auto elapsed_seconds = std::chrono::duration_cast<
-                std::chrono::duration<double>>(end - start).count();
-        mpi_comm.all_reduce(exec->get_master(), &elapsed_seconds, 1, MPI_MAX);
-        state.SetIterationTime(elapsed_seconds);
-    }
-}
 
 // This reporter does nothing.
 // We can use it to disable output from all but the root process
@@ -154,45 +133,25 @@ int main(int argc, char **argv) {
     MPI_Bcast(&id, sizeof(id), MPI_BYTE, 0, mpi_comm.get());
     ncclCommInitRank(&nccl_comm, mpi_comm.size(), id, mpi_comm.rank());
 
-    benchmark::RegisterBenchmark("none", [&](benchmark::State &st) {
-        Fixture_None_Benchmark b;
-        b.exec = exec;
-        b.mpi_comm = mpi_comm;
-        b.nccl_comm = nccl_comm;
-        b.Run(st);
-    })->ArgsProduct({
+#define REGISTER_BENCHMARK(op, variant) \
+benchmark::RegisterBenchmark(#op "/" #variant, [&](benchmark::State &st) { \
+    op ## _ ## variant ## _Benchmark b;\
+    b.exec = exec;\
+    b.mpi_comm = mpi_comm;\
+    b.nccl_comm = nccl_comm;\
+    b.Run(st);\
+})
+    REGISTER_BENCHMARK(AllGather, None)->ArgsProduct({
                             {100, 1000, 10000},
-                            {5,   10,    20}
+                            {1,   5,    10}
                     })->UseManualTime();
-    benchmark::RegisterBenchmark("extra-synch", [&](benchmark::State &st) {
-        Fixture_ExtraSync_Benchmark b;
-        b.exec = exec;
-        b.mpi_comm = mpi_comm;
-        b.nccl_comm = nccl_comm;
-        b.Run(st);
-    })->ArgsProduct({
+    REGISTER_BENCHMARK(AllGather, MPI)->ArgsProduct({
                             {100, 1000, 10000},
-                            {5,   10,    20}
+                            {1,   5,    10}
                     })->UseManualTime();
-    benchmark::RegisterBenchmark("mpi", [&](benchmark::State &st) {
-        Fixture_MPI_Benchmark b;
-        b.exec = exec;
-        b.mpi_comm = mpi_comm;
-        b.nccl_comm = nccl_comm;
-        b.Run(st);
-    })->ArgsProduct({
+    REGISTER_BENCHMARK(AllGather, NCCL)->ArgsProduct({
                             {100, 1000, 10000},
-                            {5,   10,    20}
-                    })->UseManualTime();
-    benchmark::RegisterBenchmark("nccl", [&](benchmark::State &st) {
-        Fixture_NCCL_Benchmark b;
-        b.exec = exec;
-        b.mpi_comm = mpi_comm;
-        b.nccl_comm = nccl_comm;
-        b.Run(st);
-    })->ArgsProduct({
-                            {100, 1000, 10000},
-                            {5,   10,    20}
+                            {1,   5,    10}
                     })->UseManualTime();
 
     benchmark::Initialize(&argc, argv);
