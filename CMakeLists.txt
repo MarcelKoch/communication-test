@@ -42,10 +42,12 @@ if(CMAKE_CUDA_COMPILER)
                 "variable or through cmake.")
     endif ()
 
+    add_library(nccl SHARED IMPORTED)
+    set_target_properties(nccl PROPERTIES IMPORTED_LOCATION ${NCCL_HOME}/lib/libnccl.so)
+    target_include_directories(device_libs INTERFACE ${NCCL_HOME}/include)
+
     target_link_libraries(device_libs INTERFACE nccl)
     target_compile_definitions(device_libs INTERFACE __NCCL_INC=<nccl.h> __EXEC=CudaExecutor)
-    target_include_directories(device_libs INTERFACE ${NCCL_HOME}/include)
-    target_link_directories(decice_libs INTERFACE ${NCCL_HOME}/lib)
 endif ()
 
 add_executable(main main.cpp)
