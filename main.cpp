@@ -1,5 +1,5 @@
 #include <ginkgo/ginkgo.hpp>
-#include <rccl/rccl.h>
+#include __NCCL_INC
 
 void incorrect_mpi_comm(gko::array<int>& send, gko::array<int>& recv, gko::experimental::mpi::communicator comm){
     auto exec = recv.get_executor();
@@ -19,7 +19,7 @@ void correct_mpi_comm(gko::array<int>& send, gko::array<int>& recv, gko::experim
 }
 
 void nccl_comm(gko::array<int>& send, gko::array<int>& recv, gko::experimental::mpi::communicator mpi_comm, ncclComm_t comm){
-    auto exec = gko::as<gko::HipExecutor>(recv.get_executor());
+    auto exec = gko::as<gko::__EXEC>(recv.get_executor());
 
     send.fill(mpi_comm.rank());
 
@@ -32,7 +32,7 @@ int main(int argc, char** argv) {
 
     gko::experimental::mpi::communicator comm(MPI_COMM_WORLD);
 
-    auto exec = gko::HipExecutor::create(
+    auto exec = gko::__EXEC::create(
             gko::experimental::mpi::map_rank_to_device_id(comm.get(), 8), gko::ReferenceExecutor::create());
     auto g = exec->get_scoped_device_id_guard(); // seems to be required for any nccl calls
 

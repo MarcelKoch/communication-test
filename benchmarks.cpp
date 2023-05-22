@@ -1,5 +1,5 @@
 #include <ginkgo/ginkgo.hpp>
-#include <rccl/rccl.h>
+#include __NCCL_INC
 #include <benchmark/benchmark.h>
 
 class Fixture : public benchmark::Fixture {
@@ -14,7 +14,7 @@ public:
     gko::experimental::mpi::communicator mpi_comm = MPI_COMM_WORLD;
     ncclComm_t nccl_comm;
 
-    std::shared_ptr<gko::HipExecutor> exec;
+    std::shared_ptr<gko::__EXEC> exec;
 
     gko::array<double> send_buf;
     gko::array<double> recv_buf;
@@ -142,7 +142,7 @@ int main(int argc, char **argv) {
     gko::experimental::mpi::communicator mpi_comm(MPI_COMM_WORLD);
     ncclComm_t nccl_comm;
 
-    auto exec = gko::HipExecutor::create(
+    auto exec = gko::__EXEC::create(
             gko::experimental::mpi::map_rank_to_device_id(mpi_comm.get(), 8),
             gko::ReferenceExecutor::create());
     auto g = exec->get_scoped_device_id_guard(); // seems to be required for any nccl calls
