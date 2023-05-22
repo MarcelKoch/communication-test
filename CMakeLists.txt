@@ -34,7 +34,18 @@ if(CMAKE_HIP_COMPILER)
     target_compile_definitions(device_libs INTERFACE __NCCL_INC=<rccl/rccl.h> __EXEC=HipExecutor)
 endif ()
 if(CMAKE_CUDA_COMPILER)
-    target_link_libraries(device_libs INTERFACE nccl)
+    if(NOT DEFINED NCCL_HOME AND DEFINED ENV{NCCL_HOME})
+        set(NCCL_HOME $ENV{NCCL_HOME})
+    endif ()
+    if(NOT DEFINED NCCL_HOME)
+        message(FATAL_ERROR "Please specifiy the NCCL home directory by either setting NCCL_HOME as an environment "
+                "variable or through cmake.")
+    endif ()
+
+    include(FindPkgConfig)
+    pkg_check_modules(nccl REQUIRED IMPORTED_TARGET nccl)
+
+    target_link_libraries(device_libs INTERFACE PkgConfig::nccl)
     target_compile_definitions(device_libs INTERFACE __NCCL_INC=<nccl.h> __EXEC=CudaExecutor)
 endif ()
 
