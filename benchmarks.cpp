@@ -471,6 +471,14 @@ benchmark::RegisterBenchmark(#op "/" #variant, [&](benchmark::State &st) { \
                                                            {10, 100, 1000},
                                                            {1,  5,   10}
                                                    });
+    REGISTER_BENCHMARK(AllToAll, MPI_NeighborHood)->ArgsProduct({
+                                                           {10, 100, 1000},
+                                                           {1,  5,   10}
+                                                   });
+    REGISTER_BENCHMARK(AllToAll, MPI_Manual)->ArgsProduct({
+                                                           {10, 100, 1000},
+                                                           {1,  5,   10}
+                                                   });
     REGISTER_BENCHMARK(AllToAll, NCCL)->ArgsProduct({
                                                             {10, 100, 1000},
                                                             {1,  5,   10}
