@@ -90,8 +90,59 @@ public:
         std::partial_sum(send_sizes.begin(), send_sizes.end(), send_offsets.begin() + 1);
         std::partial_sum(recv_sizes.begin(), recv_sizes.end(), recv_offsets.begin() + 1);
 
+
         send_buf = gko::array<double>(exec, send_offsets.back());
         recv_buf = gko::array<double>(exec, recv_offsets.back());
+
+
+        auto source = mpi_comm.rank();
+        // compute degree for own rank
+        auto degree = static_cast<int>(
+                std::count_if(send_sizes.begin(), send_sizes.end(),
+                              [](const auto v) { return v > 0; }));
+        // destinations are ranks with send_size > 0
+        std::vector<int> destinations;
+        std::vector<int> weight;
+        for (int r = 0; r < send_sizes.size(); ++r) {
+            if (send_sizes[r] > 0) {
+                destinations.push_back(r);
+                weight.push_back(send_sizes[r]);
+            }
+        }
+
+        MPI_Comm graph;
+        MPI_Dist_graph_create(mpi_comm.get(), 1, &source, &degree, destinations.data(),
+                              weight.data(), MPI_INFO_NULL, true, &graph);
+
+        int num_in_neighbors;
+        int num_out_neighbors;
+        int weighted;
+        MPI_Dist_graph_neighbors_count(graph, &num_in_neighbors, &num_out_neighbors,
+                                       &weighted);
+
+        std::vector<int> out_neighbors(num_out_neighbors);
+        std::vector<int> in_neighbors(num_in_neighbors);
+        std::vector<int> out_weight(num_out_neighbors);
+        std::vector<int> in_weight(num_in_neighbors);
+        MPI_Dist_graph_neighbors(graph, num_in_neighbors, in_neighbors.data(),
+                                 in_weight.data(), num_out_neighbors,
+                                 out_neighbors.data(), out_weight.data());
+
+        neighbor_comm = gko::experimental::mpi::communicator{graph, 0, rank};
+
+        // compress communication info
+        for (int r = 0; r < in_neighbors.size(); ++r) {
+            neighbor_recv_offsets[r] = recv_offsets[in_neighbors[r]];
+        }
+        neighbor_recv_offsets.back() = recv_offsets.back();
+        for (int r = 0; r < out_neighbors.size(); ++r) {
+            neighbor_send_offsets[r] = send_offsets[out_neighbors[r]];
+        }
+        neighbor_send_offsets.back() = send_offsets.back();
+        neighbor_send_sizes = std::move(out_weight);
+        neighbor_recv_sizes = std::move(in_weight);
+
+        reqs.reserve(num_in_neighbors + num_out_neighbors);
     }
 
     gko::experimental::mpi::communicator mpi_comm = MPI_COMM_WORLD;
@@ -107,6 +158,13 @@ public:
     std::vector<int> send_offsets;
     std::vector<int> recv_sizes;
     std::vector<int> recv_offsets;
+
+    std::vector<int> neighbor_send_sizes;
+    std::vector<int> neighbor_send_offsets;
+    std::vector<int> neighbor_recv_sizes;
+    std::vector<int> neighbor_recv_offsets;
+
+    std::vector<gko::experimental::mpi::request> reqs;
 };
 
 
@@ -177,6 +235,7 @@ BENCHMARK_DEFINE_F(AllGather, NCCL)(benchmark::State &state) {
     }
 }
 
+
 BENCHMARK_DEFINE_F(AllReduce, MPI)(benchmark::State &state) {
     const auto num_kernels = state.range(1);
 
@@ -224,6 +283,7 @@ BENCHMARK_DEFINE_F(AllReduce, NCCL)(benchmark::State &state) {
     }
 }
 
+
 BENCHMARK_DEFINE_F(AllToAll, MPI)(benchmark::State &state) {
     const auto num_kernels = state.range(1);
 
@@ -248,6 +308,70 @@ BENCHMARK_DEFINE_F(AllToAll, MPI)(benchmark::State &state) {
 }
 
 
+BENCHMARK_DEFINE_F(AllToAll, MPI_NeighborHood)(benchmark::State &state) {
+    const auto num_kernels = state.range(1);
+
+    for (auto _: state) {
+        auto elapsed_seconds = timed(
+                [&] {
+                    for (int i = 0; i < num_kernels; ++i) {
+                        send_buf.fill(mpi_comm.rank());
+                        benchmark::DoNotOptimize(send_buf.get_data());
+                    }
+
+                    exec->synchronize();
+                    {
+                        auto g = exec->get_scoped_device_id_guard();
+                        MPI_Neighbor_alltoallv(send_buf.get_data(), neighbor_send_sizes.data(),
+                                               neighbor_send_offsets.data(),
+                                               MPI_DOUBLE,
+                                               recv_buf.get_data(), neighbor_recv_sizes.data(),
+                                               neighbor_recv_offsets.data(),
+                                               MPI_DOUBLE, neighbor_comm.get());
+                    }
+                    exec->synchronize();
+                }
+        );
+        mpi_comm.all_reduce(exec->get_master(), &elapsed_seconds, 1, MPI_MAX);
+        state.SetIterationTime(elapsed_seconds);
+    }
+}
+
+
+BENCHMARK_DEFINE_F(AllToAll, MPI_Manual)(benchmark::State &state) {
+    const auto num_kernels = state.range(1);
+
+    for (auto _: state) {
+        auto elapsed_seconds = timed(
+                [&] {
+                    for (int i = 0; i < num_kernels; ++i) {
+                        send_buf.fill(mpi_comm.rank());
+                        benchmark::DoNotOptimize(send_buf.get_data());
+                    }
+
+                    exec->synchronize();
+                    {
+                        auto g = exec->get_scoped_device_id_guard();
+                        for (int i = 0; i < send_sizes.size(); ++i) {
+                            if (send_sizes[i]) {
+                                reqs.emplace_back(mpi_comm.i_send(exec, send_buf.get_data() + send_offsets[i],
+                                                                  send_sizes[i], i, MPI_ANY_TAG));
+                            }
+                            if (recv_sizes[i]) {
+                                reqs.emplace_back(mpi_comm.i_recv(exec, recv_buf.get_data() + recv_offsets[i],
+                                                                  recv_sizes[i], i, MPI_ANY_TAG));
+                            }
+                        }
+                        gko::experimental::mpi::wait_all(reqs);
+                    }
+                    exec->synchronize();
+                }
+        );
+        mpi_comm.all_reduce(exec->get_master(), &elapsed_seconds, 1, MPI_MAX);
+        state.SetIterationTime(elapsed_seconds);
+    }
+}
+
 BENCHMARK_DEFINE_F(AllToAll, NCCL)(benchmark::State &state) {
     const auto num_kernels = state.range(1);
 
@@ -260,12 +384,12 @@ BENCHMARK_DEFINE_F(AllToAll, NCCL)(benchmark::State &state) {
                     }
 
                     ncclGroupStart();
-                    for (int i = 0; i < send_sizes.size(); ++i){
-                        if (send_sizes[i]){
+                    for (int i = 0; i < send_sizes.size(); ++i) {
+                        if (send_sizes[i]) {
                             ncclSend(send_buf.get_data() + send_offsets[i], send_sizes[i],
                                      ncclDouble, i, nccl_comm, exec->get_stream());
                         }
-                        if (recv_sizes[i]){
+                        if (recv_sizes[i]) {
                             ncclRecv(recv_buf.get_data() + recv_offsets[i], recv_sizes[i],
                                      ncclDouble, i, nccl_comm, exec->get_stream());
                         }
@@ -278,7 +402,6 @@ BENCHMARK_DEFINE_F(AllToAll, NCCL)(benchmark::State &state) {
         state.SetIterationTime(elapsed_seconds);
     }
 }
-
 
 
 // This reporter does nothing.
@@ -346,12 +469,12 @@ benchmark::RegisterBenchmark(#op "/" #variant, [&](benchmark::State &st) { \
 
     REGISTER_BENCHMARK(AllToAll, MPI)->ArgsProduct({
                                                            {10, 100, 1000},
-                                                           {1, 5, 10}
+                                                           {1,  5,   10}
                                                    });
     REGISTER_BENCHMARK(AllToAll, NCCL)->ArgsProduct({
-                                                           {10, 100, 1000},
-                                                           {1, 5, 10}
-                                                   });
+                                                            {10, 100, 1000},
+                                                            {1,  5,   10}
+                                                    });
 
     benchmark::Initialize(&argc, argv);
     if (mpi_comm.rank() == 0)
@@ -361,7 +484,7 @@ benchmark::RegisterBenchmark(#op "/" #variant, [&](benchmark::State &st) { \
     else {
         // reporting from other processes is disabled by passing a custom reporter
         NullReporter null;
-        ::benchmark::RunSpecifiedBenchmarks(&null, &null);
+        ::benchmark::RunSpecifiedBenchmarks(&null);
     }
     benchmark::Shutdown();
     ncclCommDestroy(nccl_comm);
