@@ -97,9 +97,7 @@ public:
 
         auto source = mpi_comm.rank();
         // compute degree for own rank
-        auto degree = static_cast<int>(
-                std::count_if(send_sizes.begin(), send_sizes.end(),
-                              [](const auto v) { return v > 0; }));
+        auto degree = 4;
         // destinations are ranks with send_size > 0
         std::vector<int> destinations;
         std::vector<int> weight;
@@ -131,6 +129,8 @@ public:
         neighbor_comm = gko::experimental::mpi::communicator{graph, 0, rank};
 
         // compress communication info
+        neighbor_recv_offsets.resize(num_in_neighbors);
+        neighbor_send_offsets.resize(num_out_neighbors);
         for (int r = 0; r < in_neighbors.size(); ++r) {
             neighbor_recv_offsets[r] = recv_offsets[in_neighbors[r]];
         }
