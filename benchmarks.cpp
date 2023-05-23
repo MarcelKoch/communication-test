@@ -77,15 +77,15 @@ public:
             return ix + iy * offset;
         };
 
-        send_sizes[target_rank(mod(r_x + 1, offset), r_y)] = size;
-        send_sizes[target_rank(mod(r_x - 1, offset), r_y)] = size;
-        send_sizes[target_rank(r_x, mod(r_y + 1, offset))] = size;
-        send_sizes[target_rank(r_x, mod(r_y - 1, offset))] = size;
+        send_sizes[target_rank(mod(r_x + 1, offset), r_y)] += size;
+        send_sizes[target_rank(mod(r_x - 1, offset), r_y)] += size;
+        send_sizes[target_rank(r_x, mod(r_y + 1, offset))] += size;
+        send_sizes[target_rank(r_x, mod(r_y - 1, offset))] += size;
 
-        recv_sizes[target_rank(mod(r_x + 1, offset), r_y)] = size;
-        recv_sizes[target_rank(mod(r_x - 1, offset), r_y)] = size;
-        recv_sizes[target_rank(r_x, mod(r_y + 1, offset))] = size;
-        recv_sizes[target_rank(r_x, mod(r_y - 1, offset))] = size;
+        recv_sizes[target_rank(mod(r_x + 1, offset), r_y)] += size;
+        recv_sizes[target_rank(mod(r_x - 1, offset), r_y)] += size;
+        recv_sizes[target_rank(r_x, mod(r_y + 1, offset))] += size;
+        recv_sizes[target_rank(r_x, mod(r_y - 1, offset))] += size;
 
         std::partial_sum(send_sizes.begin(), send_sizes.end(), send_offsets.begin() + 1);
         std::partial_sum(recv_sizes.begin(), recv_sizes.end(), recv_offsets.begin() + 1);
@@ -97,7 +97,9 @@ public:
 
         auto source = mpi_comm.rank();
         // compute degree for own rank
-        auto degree = 4;
+        auto degree = static_cast<int>(
+                std::count_if(send_sizes.begin(), send_sizes.end(),
+                              [](const auto v) { return v > 0; }));
         // destinations are ranks with send_size > 0
         std::vector<int> destinations;
         std::vector<int> weight;
@@ -353,11 +355,11 @@ BENCHMARK_DEFINE_F(AllToAll, MPI_Manual)(benchmark::State &state) {
                         for (int i = 0; i < send_sizes.size(); ++i) {
                             if (send_sizes[i]) {
                                 reqs.emplace_back(mpi_comm.i_send(exec, send_buf.get_data() + send_offsets[i],
-                                                                  send_sizes[i], i, MPI_ANY_TAG));
+                                                                  send_sizes[i], i, mpi_comm.rank()));
                             }
                             if (recv_sizes[i]) {
                                 reqs.emplace_back(mpi_comm.i_recv(exec, recv_buf.get_data() + recv_offsets[i],
-                                                                  recv_sizes[i], i, MPI_ANY_TAG));
+                                                                  recv_sizes[i], i, i));
                             }
                         }
                         gko::experimental::mpi::wait_all(reqs);
