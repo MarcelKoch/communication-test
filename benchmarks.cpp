@@ -145,6 +145,14 @@ public:
         neighbor_recv_sizes = std::move(in_weight);
 
         reqs.reserve(num_in_neighbors + num_out_neighbors);
+        if(rank == 0){
+            for (auto i: neighbor_recv_offsets)
+                std::cout << i << " ";
+            std::cout << std::endl;
+            for (auto i: neighbor_send_offsets)
+                std::cout << i << " ";
+            std::cout << std::endl;
+        }
     }
 
     gko::experimental::mpi::communicator mpi_comm = MPI_COMM_WORLD;
