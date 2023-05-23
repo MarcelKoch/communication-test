@@ -112,7 +112,7 @@ public:
 
         MPI_Comm graph;
         MPI_Dist_graph_create(mpi_comm.get(), 1, &source, &degree, destinations.data(),
-                              weight.data(), MPI_INFO_NULL, true, &graph);
+                              weight.data(), MPI_INFO_NULL, false, &graph);
 
         int num_in_neighbors;
         int num_out_neighbors;
