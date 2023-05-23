@@ -131,8 +131,8 @@ public:
         neighbor_comm = gko::experimental::mpi::communicator{graph};
 
         // compress communication info
-        neighbor_recv_offsets.resize(num_in_neighbors);
-        neighbor_send_offsets.resize(num_out_neighbors);
+        neighbor_recv_offsets.resize(num_in_neighbors + 1);
+        neighbor_send_offsets.resize(num_out_neighbors + 1);
         for (int r = 0; r < in_neighbors.size(); ++r) {
             neighbor_recv_offsets[r] = recv_offsets[in_neighbors[r]];
         }
@@ -145,14 +145,6 @@ public:
         neighbor_recv_sizes = std::move(in_weight);
 
         reqs.reserve(num_in_neighbors + num_out_neighbors);
-        if(rank == 0){
-            for (auto i: neighbor_recv_offsets)
-                std::cout << i << " ";
-            std::cout << std::endl;
-            for (auto i: neighbor_send_offsets)
-                std::cout << i << " ";
-            std::cout << std::endl;
-        }
     }
 
     gko::experimental::mpi::communicator mpi_comm = MPI_COMM_WORLD;
