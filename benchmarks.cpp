@@ -126,7 +126,7 @@ public:
                                  in_weight.data(), num_out_neighbors,
                                  out_neighbors.data(), out_weight.data());
 
-        neighbor_comm = gko::experimental::mpi::communicator{graph, 0, rank};
+        neighbor_comm = gko::experimental::mpi::communicator{graph};
 
         // compress communication info
         neighbor_recv_offsets.resize(num_in_neighbors);
@@ -307,7 +307,6 @@ BENCHMARK_DEFINE_F(AllToAll, MPI)(benchmark::State &state) {
     }
 }
 
-
 BENCHMARK_DEFINE_F(AllToAll, MPI_NeighborHood)(benchmark::State &state) {
     const auto num_kernels = state.range(1);
 
@@ -336,7 +335,6 @@ BENCHMARK_DEFINE_F(AllToAll, MPI_NeighborHood)(benchmark::State &state) {
         state.SetIterationTime(elapsed_seconds);
     }
 }
-
 
 BENCHMARK_DEFINE_F(AllToAll, MPI_Manual)(benchmark::State &state) {
     const auto num_kernels = state.range(1);
