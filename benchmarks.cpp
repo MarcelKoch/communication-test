@@ -188,6 +188,8 @@ BENCHMARK_DEFINE_F(AllGather, None)(benchmark::State &state) {
         mpi_comm.all_reduce(exec->get_master(), &elapsed_seconds, 1, MPI_MAX);
         state.SetIterationTime(elapsed_seconds);
     }
+    state.counters["num_kernels"] = num_kernels;
+    state.counters["message_size"] = state.range(0) * sizeof(double);
 }
 
 BENCHMARK_DEFINE_F(AllGather, MPI)(benchmark::State &state) {
@@ -210,6 +212,8 @@ BENCHMARK_DEFINE_F(AllGather, MPI)(benchmark::State &state) {
         mpi_comm.all_reduce(exec->get_master(), &elapsed_seconds, 1, MPI_MAX);
         state.SetIterationTime(elapsed_seconds);
     }
+    state.counters["num_kernels"] = num_kernels;
+    state.counters["message_size"] = state.range(0) * sizeof(double);
 }
 
 BENCHMARK_DEFINE_F(AllGather, NCCL)(benchmark::State &state) {
@@ -235,6 +239,8 @@ BENCHMARK_DEFINE_F(AllGather, NCCL)(benchmark::State &state) {
         mpi_comm.all_reduce(exec->get_master(), &elapsed_seconds, 1, MPI_MAX);
         state.SetIterationTime(elapsed_seconds);
     }
+    state.counters["num_kernels"] = num_kernels;
+    state.counters["message_size"] = state.range(0) * sizeof(double);
 }
 
 
@@ -258,6 +264,8 @@ BENCHMARK_DEFINE_F(AllReduce, MPI)(benchmark::State &state) {
         mpi_comm.all_reduce(exec->get_master(), &elapsed_seconds, 1, MPI_MAX);
         state.SetIterationTime(elapsed_seconds);
     }
+    state.counters["num_kernels"] = num_kernels;
+    state.counters["message_size"] = state.range(0) * sizeof(double);
 }
 
 BENCHMARK_DEFINE_F(AllReduce, NCCL)(benchmark::State &state) {
@@ -283,6 +291,8 @@ BENCHMARK_DEFINE_F(AllReduce, NCCL)(benchmark::State &state) {
         mpi_comm.all_reduce(exec->get_master(), &elapsed_seconds, 1, MPI_MAX);
         state.SetIterationTime(elapsed_seconds);
     }
+    state.counters["num_kernels"] = num_kernels;
+    state.counters["message_size"] = state.range(0) * sizeof(double);
 }
 
 
@@ -307,6 +317,8 @@ BENCHMARK_DEFINE_F(AllToAll, MPI)(benchmark::State &state) {
         mpi_comm.all_reduce(exec->get_master(), &elapsed_seconds, 1, MPI_MAX);
         state.SetIterationTime(elapsed_seconds);
     }
+    state.counters["num_kernels"] = num_kernels;
+    state.counters["message_size"] = state.range(0) * sizeof(double);
 }
 
 BENCHMARK_DEFINE_F(AllToAll, MPI_NeighborHood)(benchmark::State &state) {
@@ -336,6 +348,8 @@ BENCHMARK_DEFINE_F(AllToAll, MPI_NeighborHood)(benchmark::State &state) {
         mpi_comm.all_reduce(exec->get_master(), &elapsed_seconds, 1, MPI_MAX);
         state.SetIterationTime(elapsed_seconds);
     }
+    state.counters["num_kernels"] = num_kernels;
+    state.counters["message_size"] = state.range(0) * sizeof(double);
 }
 
 BENCHMARK_DEFINE_F(AllToAll, MPI_Manual)(benchmark::State &state) {
@@ -370,6 +384,8 @@ BENCHMARK_DEFINE_F(AllToAll, MPI_Manual)(benchmark::State &state) {
         mpi_comm.all_reduce(exec->get_master(), &elapsed_seconds, 1, MPI_MAX);
         state.SetIterationTime(elapsed_seconds);
     }
+    state.counters["num_kernels"] = num_kernels;
+    state.counters["message_size"] = state.range(0) * sizeof(double);
 }
 
 BENCHMARK_DEFINE_F(AllToAll, NCCL)(benchmark::State &state) {
@@ -401,6 +417,8 @@ BENCHMARK_DEFINE_F(AllToAll, NCCL)(benchmark::State &state) {
         mpi_comm.all_reduce(exec->get_master(), &elapsed_seconds, 1, MPI_MAX);
         state.SetIterationTime(elapsed_seconds);
     }
+    state.counters["num_kernels"] = num_kernels;
+    state.counters["message_size"] = state.range(0) * sizeof(double);
 }
 
 
@@ -447,41 +465,41 @@ benchmark::RegisterBenchmark(#op "/" #variant, [&](benchmark::State &st) { \
 
     REGISTER_BENCHMARK(AllGather, None)->ArgsProduct({
                                                              {100, 1000, 10000},
-                                                             {1,   5,    10}
+                                                             {0, 1,   5,    10}
                                                      });
     REGISTER_BENCHMARK(AllGather, MPI)->ArgsProduct({
                                                             {100, 1000, 10000},
-                                                            {1,   5,    10}
+                                                            {0, 1,   5,    10}
                                                     });
     REGISTER_BENCHMARK(AllGather, NCCL)->ArgsProduct({
                                                              {100, 1000, 10000},
-                                                             {1,   5,    10}
+                                                             {0, 1,   5,    10}
                                                      });
 
     REGISTER_BENCHMARK(AllReduce, MPI)->ArgsProduct({
                                                             {1, 10, 100},
-                                                            {1, 5,  10}
+                                                            {0, 1, 5,  10}
                                                     });
     REGISTER_BENCHMARK(AllReduce, NCCL)->ArgsProduct({
                                                              {1, 10, 100},
-                                                             {1, 5,  10}
+                                                             {0, 1, 5,  10}
                                                      });
 
     REGISTER_BENCHMARK(AllToAll, MPI)->ArgsProduct({
                                                            {10, 100, 1000},
-                                                           {1,  5,   10}
+                                                           {0, 1,  5,   10}
                                                    });
     REGISTER_BENCHMARK(AllToAll, MPI_NeighborHood)->ArgsProduct({
                                                            {10, 100, 1000},
-                                                           {1,  5,   10}
+                                                           {0, 1,  5,   10}
                                                    });
     REGISTER_BENCHMARK(AllToAll, MPI_Manual)->ArgsProduct({
                                                            {10, 100, 1000},
-                                                           {1,  5,   10}
+                                                           {0, 1,  5,   10}
                                                    });
     REGISTER_BENCHMARK(AllToAll, NCCL)->ArgsProduct({
                                                             {10, 100, 1000},
-                                                            {1,  5,   10}
+                                                            {0, 1,  5,   10}
                                                     });
 
     benchmark::Initialize(&argc, argv);
