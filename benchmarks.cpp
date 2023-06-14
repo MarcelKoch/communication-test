@@ -112,7 +112,7 @@ public:
 
         MPI_Comm graph;
         MPI_Dist_graph_create(mpi_comm.get(), 1, &source, &degree, destinations.data(),
-                              weight.data(), MPI_INFO_NULL, true, &graph);
+                              weight.data(), MPI_INFO_NULL, false, &graph);
 
         int num_in_neighbors;
         int num_out_neighbors;
@@ -131,18 +131,20 @@ public:
         neighbor_comm = gko::experimental::mpi::communicator{graph};
 
         // compress communication info
+        neighbor_recv_sizes.resize(num_in_neighbors);
         neighbor_recv_offsets.resize(num_in_neighbors + 1);
+        neighbor_send_sizes.resize(num_out_neighbors);
         neighbor_send_offsets.resize(num_out_neighbors + 1);
         for (int r = 0; r < in_neighbors.size(); ++r) {
             neighbor_recv_offsets[r] = recv_offsets[in_neighbors[r]];
+            neighbor_recv_sizes[r] = recv_sizes[in_neighbors[r]];
         }
         neighbor_recv_offsets.back() = recv_offsets.back();
         for (int r = 0; r < out_neighbors.size(); ++r) {
             neighbor_send_offsets[r] = send_offsets[out_neighbors[r]];
+            neighbor_send_sizes[r] = send_sizes[out_neighbors[r]];
         }
         neighbor_send_offsets.back() = send_offsets.back();
-        neighbor_send_sizes = std::move(out_weight);
-        neighbor_recv_sizes = std::move(in_weight);
 
         reqs.reserve(num_in_neighbors + num_out_neighbors);
     }
